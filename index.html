@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="可旋转、缩放真实地貌、海洋与云层构成的三维地球。"
+    />
+    <title>TERRA — 交互式 3D 地球</title>
+    <style>
+      :root {
+        --ink: #eef5ff;
+        --muted: #8495ad;
+        --cyan: #73d9ff;
+        --line: rgba(193, 222, 255, 0.18);
+        --sans: "Helvetica Neue", "PingFang SC", "Microsoft YaHei", Arial,
+          sans-serif;
+        --mono: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #030711;
+        color: var(--ink);
+        font-family: var(--sans);
+      }
+
+      button,
+      a {
+        font: inherit;
+      }
+
+      button:focus-visible,
+      a:focus-visible,
+      #earth-stage:focus-visible {
+        outline: 1px solid var(--cyan);
+        outline-offset: 4px;
+      }
+
+      .earth-page {
+        position: relative;
+        width: 100%;
+        height: 100svh;
+        min-height: 620px;
+        overflow: hidden;
+        isolation: isolate;
+        background:
+          radial-gradient(
+            circle at 76% 48%,
+            rgba(25, 74, 129, 0.18),
+            transparent 33%
+          ),
+          radial-gradient(
+            circle at 46% 118%,
+            rgba(19, 62, 107, 0.28),
+            transparent 38%
+          ),
+          linear-gradient(132deg, #030711 0%, #06101f 54%, #02050c 100%);
+      }
+
+      .earth-page::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        opacity: 0.45;
+        background-image:
+          radial-gradient(circle at 13% 20%, white 0 0.7px, transparent 1px),
+          radial-gradient(circle at 81% 15%, white 0 0.6px, transparent 1px),
+          radial-gradient(circle at 64% 76%, white 0 0.5px, transparent 1px),
+          radial-gradient(circle at 27% 67%, white 0 0.5px, transparent 1px);
+        background-size:
+          193px 193px,
+          257px 257px,
+          223px 223px,
+          311px 311px;
+      }
+
+      .earth-page::after {
+        content: "";
+        position: absolute;
+        inset: 14px;
+        z-index: 5;
+        pointer-events: none;
+        border: 1px solid rgba(151, 190, 230, 0.08);
+      }
+
+      .aurora {
+        position: absolute;
+        z-index: 0;
+        pointer-events: none;
+        border-radius: 50%;
+        filter: blur(80px);
+        opacity: 0.13;
+      }
+
+      .aurora-one {
+        top: -18%;
+        right: -8%;
+        width: 42vw;
+        height: 42vw;
+        background: #197aff;
+      }
+
+      .aurora-two {
+        bottom: -28%;
+        left: 18%;
+        width: 36vw;
+        height: 36vw;
+        background: #1bc6d6;
+      }
+
+      .site-header {
+        position: absolute;
+        inset: 0 0 auto;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 104px;
+        padding: 0 clamp(30px, 5.2vw, 82px);
+        border-bottom: 1px solid rgba(167, 205, 245, 0.1);
+      }
+
+      .wordmark {
+        display: inline-flex;
+        align-items: center;
+        gap: 13px;
+        color: var(--ink);
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.3em;
+        text-decoration: none;
+      }
+
+      .wordmark-mark {
+        position: relative;
+        width: 23px;
+        height: 23px;
+        border: 1px solid rgba(198, 229, 255, 0.66);
+        border-radius: 50%;
+      }
+
+      .wordmark-mark::before,
+      .wordmark-mark::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: -5px;
+        width: 31px;
+        border-top: 1px solid rgba(115, 217, 255, 0.65);
+        transform: rotate(-28deg);
+      }
+
+      .wordmark-mark::after {
+        left: 5px;
+        width: 11px;
+        transform: rotate(90deg);
+      }
+
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #9fb1c9;
+        font-family: var(--mono);
+        font-size: 9px;
+        letter-spacing: 0.18em;
+      }
+
+      .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #7ce5ff;
+        box-shadow: 0 0 12px #55cfff;
+        animation: pulse 2.3s ease-in-out infinite;
+      }
+
+      .hero-copy {
+        position: absolute;
+        top: 50%;
+        left: clamp(30px, 8vw, 130px);
+        z-index: 8;
+        width: min(440px, 38vw);
+        transform: translateY(-42%);
+        pointer-events: none;
+      }
+
+      .eyebrow {
+        margin: 0 0 24px;
+        color: var(--cyan);
+        font-family: var(--mono);
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.28em;
+      }
+
+      h1 {
+        margin: 0;
+        color: #f3f7ff;
+        font-size: clamp(46px, 5.2vw, 82px);
+        font-weight: 300;
+        letter-spacing: -0.055em;
+        line-height: 1.08;
+      }
+
+      h1 span {
+        color: transparent;
+        background: linear-gradient(112deg, #f7fbff 5%, #85a9c7 90%);
+        -webkit-background-clip: text;
+        background-clip: text;
+      }
+
+      .intro {
+        width: min(370px, 100%);
+        margin: 28px 0 0;
+        color: #92a1b6;
+        font-size: 13px;
+        font-weight: 300;
+        line-height: 1.9;
+        letter-spacing: 0.045em;
+      }
+
+      .interaction-hint {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        margin-top: 38px;
+        color: #66788f;
+        font-family: var(--mono);
+        font-size: 8px;
+        letter-spacing: 0.14em;
+      }
+
+      .interaction-hint i {
+        width: 22px;
+        border-top: 1px solid rgba(130, 156, 184, 0.3);
+      }
+
+      .mouse-shape {
+        position: relative;
+        display: block;
+        width: 16px;
+        height: 24px;
+        border: 1px solid #62778f;
+        border-radius: 9px;
+      }
+
+      .mouse-shape::after {
+        content: "";
+        position: absolute;
+        top: 5px;
+        left: 7px;
+        width: 1px;
+        height: 4px;
+        background: var(--cyan);
+      }
+
+      #earth-stage {
+        position: absolute;
+        inset: 104px 0 58px;
+        z-index: 3;
+        cursor: grab;
+        touch-action: none;
+        user-select: none;
+      }
+
+      #earth-stage:active {
+        cursor: grabbing;
+      }
+
+      #earth-stage canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      .loading-indicator {
+        position: absolute;
+        top: 50%;
+        left: 70%;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: #7387a2;
+        font-family: var(--mono);
+        font-size: 8px;
+        letter-spacing: 0.17em;
+        transition: opacity 0.5s ease;
+        transform: translate(-50%, -50%);
+      }
+
+      .loading-indicator span {
+        width: 14px;
+        height: 14px;
+        border: 1px solid rgba(115, 217, 255, 0.25);
+        border-top-color: var(--cyan);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      .loading-indicator.is-hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .zoom-controls {
+        position: absolute;
+        top: 50%;
+        right: clamp(27px, 3.2vw, 52px);
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 38px;
+        padding: 7px 0;
+        border: 1px solid rgba(160, 199, 237, 0.16);
+        border-radius: 22px;
+        background: rgba(4, 10, 21, 0.58);
+        backdrop-filter: blur(16px);
+        transform: translateY(-50%);
+      }
+
+      .zoom-controls button {
+        width: 34px;
+        height: 34px;
+        padding: 0;
+        border: 0;
+        color: #bdcada;
+        background: transparent;
+        font-family: var(--mono);
+        font-size: 18px;
+        cursor: pointer;
+      }
+
+      .zoom-controls button:hover {
+        color: var(--cyan);
+      }
+
+      .zoom-controls span {
+        width: 14px;
+        border-top: 1px solid rgba(160, 199, 237, 0.13);
+      }
+
+      .layer-legend {
+        position: absolute;
+        right: clamp(88px, 8vw, 126px);
+        bottom: 75px;
+        z-index: 8;
+        width: 176px;
+        pointer-events: none;
+      }
+
+      .layer-legend > p {
+        margin: 0 0 14px;
+        color: #53667e;
+        font-family: var(--mono);
+        font-size: 7px;
+        letter-spacing: 0.22em;
+      }
+
+      .layer-legend ol {
+        display: grid;
+        gap: 8px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .layer-legend li {
+        display: grid;
+        grid-template-columns: 25px auto 1fr;
+        align-items: center;
+        gap: 9px;
+        color: #798ba1;
+        font-family: var(--mono);
+        font-size: 7px;
+        letter-spacing: 0.16em;
+      }
+
+      .layer-legend li i {
+        border-top: 1px solid rgba(160, 193, 228, 0.2);
+      }
+
+      .site-footer {
+        position: absolute;
+        inset: auto 0 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 58px;
+        padding: 0 clamp(30px, 5.2vw, 82px);
+        border-top: 1px solid rgba(167, 205, 245, 0.09);
+        color: #3f5065;
+        font-family: var(--mono);
+        font-size: 7px;
+        letter-spacing: 0.18em;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @keyframes pulse {
+        50% {
+          opacity: 0.45;
+          transform: scale(0.8);
+        }
+      }
+
+      @media (max-width: 760px) {
+        .earth-page::after {
+          inset: 8px;
+        }
+
+        .site-header {
+          height: 78px;
+          padding: 0 24px;
+        }
+
+        .hero-copy {
+          top: 106px;
+          left: 24px;
+          width: calc(100% - 48px);
+          transform: none;
+        }
+
+        .eyebrow {
+          margin-bottom: 12px;
+          font-size: 7px;
+        }
+
+        h1 {
+          font-size: clamp(39px, 12vw, 58px);
+          line-height: 1.02;
+        }
+
+        .intro {
+          width: 300px;
+          margin-top: 15px;
+          font-size: 11px;
+          line-height: 1.65;
+        }
+
+        .interaction-hint,
+        .layer-legend {
+          display: none;
+        }
+
+        #earth-stage {
+          inset: 78px 0 48px;
+        }
+
+        .loading-indicator {
+          top: 67%;
+          left: 50%;
+        }
+
+        .zoom-controls {
+          top: auto;
+          right: 20px;
+          bottom: 71px;
+          flex-direction: row;
+          width: auto;
+          padding: 2px 7px;
+          transform: none;
+        }
+
+        .zoom-controls span {
+          width: 0;
+          height: 14px;
+          border-top: 0;
+          border-left: 1px solid rgba(160, 199, 237, 0.13);
+        }
+
+        .site-footer {
+          height: 48px;
+          padding: 0 24px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .status-dot,
+        .loading-indicator span {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="earth-page">
+      <div class="aurora aurora-one"></div>
+      <div class="aurora aurora-two"></div>
+
+      <header class="site-header">
+        <a class="wordmark" href="#" aria-label="Terra 首页">
+          <span class="wordmark-mark" aria-hidden="true"></span>
+          TERRA
+        </a>
+        <div class="status">
+          <span class="status-dot"></span>
+          ORBITAL VIEW
+        </div>
+      </header>
+
+      <section class="hero-copy" aria-labelledby="earth-title">
+        <p class="eyebrow">PLANET 03 / SOL SYSTEM</p>
+        <h1 id="earth-title">
+          把蓝色星球
+          <br />
+          <span>握在手中</span>
+        </h1>
+        <p class="intro">
+          穿越云层，观察大陆与海洋。拖动地球，从任何角度重新认识我们共同的家园。
+        </p>
+        <div class="interaction-hint">
+          <span class="mouse-shape" aria-hidden="true"></span>
+          <span>拖动旋转</span>
+          <i></i>
+          <span>滚轮缩放</span>
+        </div>
+      </section>
+
+      <div
+        id="earth-stage"
+        tabindex="0"
+        aria-label="3D 地球交互区。可用方向键旋转，加减号缩放，数字 0 复位。"
+      >
+        <div class="loading-indicator" id="loading">
+          <span></span>
+          正在接近地球
+        </div>
+      </div>
+
+      <nav class="zoom-controls" aria-label="地球缩放控制">
+        <button type="button" id="zoom-in" aria-label="放大地球">+</button>
+        <span></span>
+        <button type="button" id="zoom-out" aria-label="缩小地球">−</button>
+        <span></span>
+        <button type="button" id="reset" aria-label="复位地球视角">↺</button>
+      </nav>
+
+      <aside class="layer-legend" aria-label="地球可视图层">
+        <p>VISIBLE LAYERS</p>
+        <ol>
+          <li><span>01</span><b>LAND</b><i></i></li>
+          <li><span>02</span><b>OCEAN</b><i></i></li>
+          <li><span>03</span><b>CLOUD</b><i></i></li>
+        </ol>
+      </aside>
+
+      <footer class="site-footer">
+        <span>REAL SURFACE IMAGERY</span>
+        <span>© PLANET EARTH</span>
+      </footer>
+    </main>
+
+    <script type="module">
+      import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.min.js";
+
+      const stage = document.getElementById("earth-stage");
+      const loading = document.getElementById("loading");
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+      camera.position.z = 3.75;
+
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: "high-performance",
+      });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.12;
+      renderer.domElement.setAttribute(
+        "aria-label",
+        "可旋转和缩放的三维地球，显示真实陆地、海洋与云层",
+      );
+      stage.appendChild(renderer.domElement);
+
+      const earthGroup = new THREE.Group();
+      earthGroup.rotation.set(0.12, -0.62, -0.12);
+      scene.add(earthGroup);
+
+      const manager = new THREE.LoadingManager(() =>
+        loading.classList.add("is-hidden"),
+      );
+      const loader = new THREE.TextureLoader(manager);
+      const textureBase =
+        "https://threejs.org/examples/textures/planets/";
+      const surface = loader.load(`${textureBase}earth_atmos_2048.jpg`);
+      const normal = loader.load(`${textureBase}earth_normal_2048.jpg`);
+      const specular = loader.load(`${textureBase}earth_specular_2048.jpg`);
+      const clouds = loader.load(`${textureBase}earth_clouds_1024.png`);
+      surface.colorSpace = THREE.SRGBColorSpace;
+
+      const sphere = new THREE.SphereGeometry(1, 128, 128);
+      const earth = new THREE.Mesh(
+        sphere,
+        new THREE.MeshPhongMaterial({
+          map: surface,
+          normalMap: normal,
+          normalScale: new THREE.Vector2(0.72, 0.72),
+          specularMap: specular,
+          specular: new THREE.Color(0x7892a8),
+          shininess: 28,
+        }),
+      );
+      earthGroup.add(earth);
+
+      const cloudLayer = new THREE.Mesh(
+        sphere,
+        new THREE.MeshPhongMaterial({
+          map: clouds,
+          transparent: true,
+          opacity: 0.62,
+          depthWrite: false,
+        }),
+      );
+      cloudLayer.scale.setScalar(1.012);
+      earthGroup.add(cloudLayer);
+
+      const atmosphere = new THREE.Mesh(
+        sphere,
+        new THREE.ShaderMaterial({
+          vertexShader: `
+            varying vec3 vNormal;
+            varying vec3 vPosition;
+            void main() {
+              vNormal = normalize(normalMatrix * normal);
+              vec4 viewPosition = modelViewMatrix * vec4(position, 1.0);
+              vPosition = viewPosition.xyz;
+              gl_Position = projectionMatrix * viewPosition;
+            }
+          `,
+          fragmentShader: `
+            varying vec3 vNormal;
+            varying vec3 vPosition;
+            void main() {
+              float rim = pow(0.62 - dot(vNormal, normalize(-vPosition)), 2.25);
+              gl_FragColor = vec4(0.14, 0.58, 1.0, rim * 0.72);
+            }
+          `,
+          side: THREE.BackSide,
+          blending: THREE.AdditiveBlending,
+          transparent: true,
+          depthWrite: false,
+        }),
+      );
+      atmosphere.scale.setScalar(1.08);
+      earthGroup.add(atmosphere);
+
+      scene.add(new THREE.HemisphereLight(0x8bbcff, 0x08101f, 1.2));
+      const sunlight = new THREE.DirectionalLight(0xfff3dc, 3.15);
+      sunlight.position.set(-3.4, 2.1, 4.2);
+      scene.add(sunlight);
+      const fillLight = new THREE.DirectionalLight(0x2f77ff, 0.42);
+      fillLight.position.set(3, -1, 2);
+      scene.add(fillLight);
+
+      const starPositions = new Float32Array(1800 * 3);
+      let seed = 24681357;
+      const random = () => {
+        seed = (seed * 16807) % 2147483647;
+        return (seed - 1) / 2147483646;
+      };
+      for (let i = 0; i < starPositions.length; i += 3) {
+        const radius = 10 + random() * 24;
+        const theta = random() * Math.PI * 2;
+        const phi = Math.acos(2 * random() - 1);
+        starPositions[i] = radius * Math.sin(phi) * Math.cos(theta);
+        starPositions[i + 1] = radius * Math.cos(phi);
+        starPositions[i + 2] = radius * Math.sin(phi) * Math.sin(theta);
+      }
+      const starGeometry = new THREE.BufferGeometry();
+      starGeometry.setAttribute(
+        "position",
+        new THREE.BufferAttribute(starPositions, 3),
+      );
+      const starField = new THREE.Points(
+        starGeometry,
+        new THREE.PointsMaterial({
+          color: 0xd9e8ff,
+          size: 0.018,
+          transparent: true,
+          opacity: 0.72,
+        }),
+      );
+      scene.add(starField);
+
+      const pointers = new Map();
+      const clampZoom = (value) => THREE.MathUtils.clamp(value, 2.35, 5.2);
+      let dragging = false;
+      let lastPinchDistance = 0;
+
+      const zoom = (amount) => {
+        camera.position.z = clampZoom(camera.position.z + amount);
+      };
+      const reset = () => {
+        earthGroup.rotation.set(0.12, -0.62, -0.12);
+        camera.position.z = 3.75;
+      };
+      const pointerDistance = () => {
+        const values = [...pointers.values()];
+        return values.length < 2
+          ? 0
+          : Math.hypot(
+              values[0].x - values[1].x,
+              values[0].y - values[1].y,
+            );
+      };
+
+      renderer.domElement.addEventListener("pointerdown", (event) => {
+        renderer.domElement.setPointerCapture(event.pointerId);
+        pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        dragging = true;
+        if (pointers.size === 2) lastPinchDistance = pointerDistance();
+        stage.focus();
+      });
+
+      renderer.domElement.addEventListener("pointermove", (event) => {
+        const previous = pointers.get(event.pointerId);
+        if (!previous) return;
+        if (pointers.size === 1) {
+          earthGroup.rotation.y += (event.clientX - previous.x) * 0.006;
+          earthGroup.rotation.x = THREE.MathUtils.clamp(
+            earthGroup.rotation.x + (event.clientY - previous.y) * 0.0045,
+            -1.15,
+            1.15,
+          );
+        }
+        pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (pointers.size === 2) {
+          const distance = pointerDistance();
+          zoom((lastPinchDistance - distance) * 0.009);
+          lastPinchDistance = distance;
+        }
+      });
+
+      const releasePointer = (event) => {
+        pointers.delete(event.pointerId);
+        dragging = pointers.size > 0;
+        if (pointers.size < 2) lastPinchDistance = 0;
+      };
+      renderer.domElement.addEventListener("pointerup", releasePointer);
+      renderer.domElement.addEventListener("pointercancel", releasePointer);
+      renderer.domElement.addEventListener(
+        "wheel",
+        (event) => {
+          event.preventDefault();
+          zoom(event.deltaY * 0.0025);
+        },
+        { passive: false },
+      );
+
+      stage.addEventListener("keydown", (event) => {
+        const actions = {
+          ArrowLeft: () => (earthGroup.rotation.y -= 0.12),
+          ArrowRight: () => (earthGroup.rotation.y += 0.12),
+          ArrowUp: () => (earthGroup.rotation.x -= 0.08),
+          ArrowDown: () => (earthGroup.rotation.x += 0.08),
+          "+": () => zoom(-0.28),
+          "=": () => zoom(-0.28),
+          "-": () => zoom(0.28),
+          0: reset,
+        };
+        if (actions[event.key]) {
+          event.preventDefault();
+          actions[event.key]();
+        }
+      });
+
+      document.getElementById("zoom-in").addEventListener("click", () => zoom(-0.32));
+      document.getElementById("zoom-out").addEventListener("click", () => zoom(0.32));
+      document.getElementById("reset").addEventListener("click", reset);
+
+      const resize = () => {
+        renderer.setSize(stage.clientWidth, stage.clientHeight, false);
+        camera.aspect = stage.clientWidth / stage.clientHeight;
+        camera.updateProjectionMatrix();
+        if (stage.clientWidth < 760) {
+          earthGroup.position.set(0, -0.26, 0);
+          if (camera.position.z < 3.9) camera.position.z = 4.15;
+        } else {
+          earthGroup.position.set(0.58, -0.02, 0);
+        }
+      };
+      window.addEventListener("resize", resize);
+      resize();
+
+      const reduceMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+      const clock = new THREE.Clock();
+      const animate = () => {
+        const delta = Math.min(clock.getDelta(), 0.04);
+        if (!dragging && !reduceMotion) earthGroup.rotation.y += delta * 0.035;
+        cloudLayer.rotation.y += delta * 0.012;
+        starField.rotation.y -= delta * 0.0015;
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+      };
+      animate();
+    </script>
+  </body>
+</html>
